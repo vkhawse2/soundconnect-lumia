@@ -37,7 +37,8 @@ jobs:
         run: >
           msbuild SoundConnect.sln /p:Configuration=Release /p:Platform=ARM
           /p:AppxPackageDir="$env:GITHUB_WORKSPACE\AppPackages\"
-          /p:AppxBundle=Never
+          /p:AppxBundle=Always
+          /p:AppxBundlePlatforms=ARM
           /p:UapAppxPackageBuildMode=SideloadOnly
           /p:PackageCertificateKeyFile="$env:GITHUB_WORKSPACE\SoundConnect_TemporaryKey.pfx"
           /p:PackageCertificatePassword=soundconnect
@@ -49,6 +50,5 @@ jobs:
         with:
           name: SoundConnect-W10M
           path: |
-            AppPackages/**/*.appx
-            AppPackages/**/Dependencies/**/*
+            AppPackages/**/*.appxbundle
             SoundConnect.cer

@@ -1,0 +1,30 @@
+SOUND CONNECT - SIMPLE INSTALL (from Downloads, 2 taps)
+=========================================================
+
+You need TWO files (they come together from the build):
+  1. SoundConnect.cer          (the key)
+  2. SoundConnect_... .appxbundle   (the app - ALL helper files are INSIDE it)
+
+STEPS
+-----
+1. Phone: Settings > Update & security > For developers > Developer Mode ON
+   (you already did this for VLC)
+
+2. Copy BOTH files to the phone's Downloads folder (USB cable is fine).
+
+3. Open File Explorer on the phone > Downloads.
+   Tap  SoundConnect.cer  >  Install.
+
+4. Tap the  .appxbundle  file  >  Install.
+   Wait for it to finish. Done!
+
+5. "Sound Connect" is now in your app list, with your logo.
+
+6. Pair the WH-1000XM4 in Settings > Bluetooth, open Sound Connect,
+   pick the headphones, tap Connect.
+
+NO dependency files to add one-by-one - the bundle carries them inside.
+That also means the 0x80073CF3 error from the VLC/Live Store attempt
+cannot happen with this file.
+
+If step 4 shows an error, take a photo of it and send it.

@@ -28,28 +28,28 @@ the Lumia through Device Portal — the same way as VLC.
 2. Choose **Sideloading** → Next.
 3. Signing: choose **Create…** a test certificate (publisher name can be
    `Vishal`) — or pick an existing one. → Next.
-4. Version: leave 1.0.0.0. Architecture: tick **ARM** only. → Create.
+4. **Bundle: choose "Always"** when the wizard asks (the project is
+   already set this way). Version: leave 1.0.0.0. Architecture: tick
+   **ARM** only. → Create.
 5. Wait for "Package creation finished". Click the output folder link.
 
 Inside the folder you will find:
-- `SoundConnect_1.0.0.0_ARM_Test\` containing the **`.appx`**, a **`.cer`**,
-  and a **Dependencies** folder.
+- `SoundConnect_1.0.0.0_ARM.appxbundle` — ONE file with the app and all
+  its helper (dependency) packages inside it
+- a **`.cer`** certificate file next to it
 
-## Step 4 — Install on the Lumia
+## Step 4 — Install on the Lumia (2 taps, from Downloads)
 
 1. Phone: **Settings → Update & security → For developers → Developer Mode ON**
-   (you already have this + Device Portal working).
-2. Copy the **`.cer`** to the phone (USB), open it in File Explorer, tap **Install**.
-3. PC browser → your phone's **Device Portal → Apps** page:
-   - Choose file: the **`.appx`**
-   - Click **Add dependency** for **every** `.appx` inside the package's
-     `Dependencies\ARM` folder (usually .NET Native Framework, .NET Native
-     Runtime, VCLibs — same files as the VLC install).
-   - Click **Go**.
-4. "Sound Connect" appears in the phone's app list with your logo.
+   (already done on your phone).
+2. Copy the **`.cer`** and the **`.appxbundle`** to the phone's
+   **Downloads** folder (USB).
+3. File Explorer → Downloads → tap the **`.cer`** → **Install**.
+4. Tap the **`.appxbundle`** → **Install**. Done — "Sound Connect"
+   appears in the app list with your logo.
 
-> If install fails with **0x80073CF3**, a dependency was missed — redo
-> step 3 and add *all* of them.
+> No dependency files to add one by one: the bundle carries them
+> inside, so the **0x80073CF3** error cannot happen with this file.
 
 ## Step 5 — First test
 

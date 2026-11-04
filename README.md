@@ -41,25 +41,21 @@ A Windows machine is required (UWP ARM packages cannot be built on Linux).
 
 **Route A — GitHub Actions (no installs):** push this repo to GitHub,
 open the *Actions* tab, run **Build Sound Connect (Windows 10 Mobile
-ARM)**. Download the `SoundConnect-W10M` artifact: `.appx`, its
-`Dependencies` folder, and `SoundConnect.cer`.
+ARM)**. Download the `SoundConnect-W10M` artifact: one **`.appxbundle`**
+plus `SoundConnect.cer`.
 
-**Route B — Visual Studio on your PC:** see `BUILD-ON-YOUR-PC.md`.
+**Route B — Visual Studio on your PC:** see `BUILD-ON-YOUR-PC.md`
+(in the wizard, leave the bundle choice on **Always**).
 
-## Installing on the phone
+## Installing on the phone — the bundle way (see INSTALL.txt)
 
-Exactly like the VLC package:
+The build produces an **`.appxbundle`**: the app *and all its dependency
+packages inside one file*. No dependency juggling, no 0x80073CF3.
 
 1. Developer Mode ON (Settings → Update & security → For developers).
-2. Install the **`.cer`** on the phone first (copy it over, tap it, install).
-   (GitHub route only — Visual Studio's wizard shows its own certificate;
-   install that `.cer` from the package folder instead.)
-3. Open **Device Portal → Apps** on the PC, choose the `.appx`,
-   and add every file from its **Dependencies** folder with
-   *Add dependency*. Click **Go**.
-   (Or copy `.cer` + dependencies + `.appx` to the phone and tap them in
-   File Explorer in that order.)
-4. Skipping steps 2–3 is what caused error **0x80073CF3** last time.
+2. Copy **`.cer`** + **`.appxbundle`** to the phone's **Downloads** folder.
+3. File Explorer → tap the **`.cer`** → Install.
+4. Tap the **`.appxbundle`** → Install. Done.
 5. Pair the XM4 in phone Settings (for music), open Sound Connect,
    pick the headphones, tap **Connect**.
 
