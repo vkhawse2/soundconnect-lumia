@@ -1,0 +1,54 @@
+name: Build Sound Connect (Windows 10 Mobile ARM)
+
+# Builds the UWP app on a Windows runner and signs it with a fresh
+# self-signed certificate. Artifacts: the .appx + the .cer to install
+# on the phone first (same pattern as the VLC package).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Create self-signed signing certificate
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=Vishal" `
+            -KeyUsage DigitalSignature -FriendlyName "SoundConnect" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
+          $pwd = ConvertTo-SecureString -String "soundconnect" -Force -AsPlainText
+          Export-PfxCertificate -cert $cert -FilePath "$env:GITHUB_WORKSPACE\SoundConnect_TemporaryKey.pfx" -Password $pwd
+          Export-Certificate -cert $cert -FilePath "$env:GITHUB_WORKSPACE\SoundConnect.cer"
+          echo "THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+
+      - name: Restore NuGet packages
+        run: nuget restore SoundConnect.sln
+
+      - name: Build ARM Release package
+        run: >
+          msbuild SoundConnect.sln /p:Configuration=Release /p:Platform=ARM
+          /p:AppxPackageDir="$env:GITHUB_WORKSPACE\AppPackages\"
+          /p:AppxBundle=Never
+          /p:UapAppxPackageBuildMode=SideloadOnly
+          /p:PackageCertificateKeyFile="$env:GITHUB_WORKSPACE\SoundConnect_TemporaryKey.pfx"
+          /p:PackageCertificatePassword=soundconnect
+          /p:PackageCertificateThumbprint=$env:THUMBPRINT
+          /p:GenerateAppxPackageOnBuild=true
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundConnect-W10M
+          path: |
+            AppPackages/**/*.appx
+            AppPackages/**/Dependencies/**/*
+            SoundConnect.cer
