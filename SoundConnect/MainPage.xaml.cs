@@ -7,6 +7,7 @@ using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
+using Windows.UI.Xaml.Media;
 using SoundConnect.Sony;
 
 namespace SoundConnect
@@ -23,9 +24,30 @@ namespace SoundConnect
         public MainPage()
         {
             InitializeComponent();
+            SetControlsEnabled(false);
             foreach (var name in EqPresets.Names) EqPresetCombo.Items.Add(name);
             _session.Notification += OnNotification;
             _session.Disconnected += OnDisconnected;
+        }
+
+        // StackPanel (a Panel, not a Control) has no IsEnabled of its own in UWP,
+        // so enabling/disabling the controls section walks the visual tree and
+        // toggles every Control inside it.
+        void SetControlsEnabled(bool enabled)
+        {
+            SetEnabledRecursive(ControlsPanel, enabled);
+        }
+
+        static void SetEnabledRecursive(DependencyObject parent, bool enabled)
+        {
+            int count = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                var control = child as Control;
+                if (control != null) control.IsEnabled = enabled;
+                SetEnabledRecursive(child, enabled);
+            }
         }
 
         protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -94,7 +116,7 @@ namespace SoundConnect
                 _hp = null;
                 StatusText.Text = "Not connected";
                 ConnectBtn.Content = "Connect";
-                ControlsPanel.IsEnabled = false;
+                SetControlsEnabled(false);
                 Log("Disconnected");
                 return;
             }
@@ -112,7 +134,7 @@ namespace SoundConnect
                 _hp = new SonyHeadphones(_session);
                 StatusText.Text = "Connected to " + device.Name;
                 ConnectBtn.Content = "Disconnect";
-                ControlsPanel.IsEnabled = true;
+                SetControlsEnabled(true);
                 Log("Connected to " + device.Name);
                 await _hp.InitDeviceAsync();
                 await RefreshAllAsync();
@@ -133,7 +155,7 @@ namespace SoundConnect
             {
                 StatusText.Text = "Disconnected";
                 ConnectBtn.Content = "Connect";
-                ControlsPanel.IsEnabled = false;
+                SetControlsEnabled(false);
                 _hp = null;
             });
             Log("Headphones disconnected");

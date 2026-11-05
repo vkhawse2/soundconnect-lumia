@@ -39,7 +39,7 @@
                 <TextBlock Text="Pair the headphones in phone Settings first, and close Sound Connect on any other device - the headphones allow only one controller at a time."
                            FontSize="12" Foreground="#FF9E9E9E" TextWrapping="Wrap" Margin="0,6,0,0"/>
 
-                <StackPanel x:Name="ControlsPanel" IsEnabled="False">
+                <StackPanel x:Name="ControlsPanel">
                     <!-- Status -->
                     <TextBlock Text="STATUS" FontSize="13" Foreground="#FF5B8CFF" Margin="0,22,0,6"/>
                     <StackPanel Orientation="Horizontal">
