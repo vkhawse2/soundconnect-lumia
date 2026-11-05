@@ -241,16 +241,20 @@ namespace SoundConnect.Sony
             {
                 _expectedOpcode = retOpcode;
                 _expectedSubtype = retSubtype;
-                _responseWaiter = new TaskCompletionSource<byte[]>();
+                // Keep the waiter in a local: HandleFrame clears the field
+                // before completing it, so awaiting the field afterwards
+                // dereferences null (the v1.1 Arg_NullReferenceException bug).
+                var waiter = new TaskCompletionSource<byte[]>();
+                _responseWaiter = waiter;
                 byte seq = NextSequence();
                 await WriteRawAsync(SonyFrame.Encode(SonyFrame.TypeDataMdr, seq, payload));
-                var done = await Task.WhenAny(_responseWaiter.Task, Task.Delay(timeoutMs));
-                if (done != _responseWaiter.Task)
+                var done = await Task.WhenAny(waiter.Task, Task.Delay(timeoutMs));
+                if (done != waiter.Task)
                 {
-                    _responseWaiter = null;
+                    if (_responseWaiter == waiter) _responseWaiter = null;
                     throw new TimeoutException("Headphones did not answer (opcode 0x" + retOpcode.ToString("X2") + ")");
                 }
-                return await _responseWaiter.Task;
+                return await waiter.Task;
             }
             finally { _sendLock.Release(); }
         }

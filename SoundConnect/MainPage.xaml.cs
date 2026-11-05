@@ -24,30 +24,18 @@ namespace SoundConnect
         public MainPage()
         {
             InitializeComponent();
-            SetControlsEnabled(false);
+            SetControlsVisible(false);
             foreach (var name in EqPresets.Names) EqPresetCombo.Items.Add(name);
             _session.Notification += OnNotification;
             _session.Disconnected += OnDisconnected;
         }
 
-        // StackPanel (a Panel, not a Control) has no IsEnabled of its own in UWP,
-        // so enabling/disabling the controls section walks the visual tree and
-        // toggles every Control inside it.
-        void SetControlsEnabled(bool enabled)
+        // The whole controls section stays hidden until the headphones are
+        // connected (owner's requirement) - it appears on connect and
+        // disappears again on disconnect.
+        void SetControlsVisible(bool visible)
         {
-            SetEnabledRecursive(ControlsPanel, enabled);
-        }
-
-        static void SetEnabledRecursive(DependencyObject parent, bool enabled)
-        {
-            int count = VisualTreeHelper.GetChildrenCount(parent);
-            for (int i = 0; i < count; i++)
-            {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                var control = child as Control;
-                if (control != null) control.IsEnabled = enabled;
-                SetEnabledRecursive(child, enabled);
-            }
+            ControlsPanel.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
 
         protected override async void OnNavigatedTo(NavigationEventArgs e)
@@ -87,18 +75,17 @@ namespace SoundConnect
                 _devices.Clear();
                 DeviceCombo.Items.Clear();
                 var found = await DeviceInformation.FindAllAsync(BluetoothDevice.GetDeviceSelector());
-                int select = -1;
                 foreach (var d in found)
                 {
-                    _devices.Add(d);
-                    int idx = DeviceCombo.Items.Count;
-                    DeviceCombo.Items.Add(d.Name);
+                    // This app serves the WH-1000XM4 only - other paired
+                    // Bluetooth devices never appear in the list.
                     var n = (d.Name ?? "").ToUpperInvariant();
-                    if (n.Contains("WH-1000") || n.Contains("XM4") || n.Contains("SONY")) select = idx;
+                    if (!n.Contains("WH-1000XM4")) continue;
+                    _devices.Add(d);
+                    DeviceCombo.Items.Add(d.Name);
                 }
-                if (select >= 0) DeviceCombo.SelectedIndex = select;
-                else if (DeviceCombo.Items.Count > 0) DeviceCombo.SelectedIndex = 0;
-                Log("Found " + _devices.Count + " paired Bluetooth device(s)");
+                if (DeviceCombo.Items.Count > 0) DeviceCombo.SelectedIndex = 0;
+                Log(_devices.Count > 0 ? "Found WH-1000XM4" : "WH-1000XM4 not found - pair it in Settings first");
             }
             catch (Exception ex) { Log("Device list failed: " + ex.Message); }
         }
@@ -106,6 +93,14 @@ namespace SoundConnect
         async void RefreshDevicesBtn_Click(object sender, RoutedEventArgs e)
         {
             await RefreshDevicesAsync();
+        }
+
+        bool _logExpanded;
+        void LogToggleBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _logExpanded = !_logExpanded;
+            LogScroller.MaxHeight = _logExpanded ? 4000 : 110;
+            LogToggleBtn.Content = _logExpanded ? "Short" : "Expand";
         }
 
         async void ConnectBtn_Click(object sender, RoutedEventArgs e)
@@ -116,7 +111,7 @@ namespace SoundConnect
                 _hp = null;
                 StatusText.Text = "Not connected";
                 ConnectBtn.Content = "Connect";
-                SetControlsEnabled(false);
+                SetControlsVisible(false);
                 Log("Disconnected");
                 return;
             }
@@ -134,7 +129,7 @@ namespace SoundConnect
                 _hp = new SonyHeadphones(_session);
                 StatusText.Text = "Connected to " + device.Name;
                 ConnectBtn.Content = "Disconnect";
-                SetControlsEnabled(true);
+                SetControlsVisible(true);
                 Log("Connected to " + device.Name);
                 await _hp.InitDeviceAsync();
                 await RefreshAllAsync();
@@ -155,7 +150,7 @@ namespace SoundConnect
             {
                 StatusText.Text = "Disconnected";
                 ConnectBtn.Content = "Connect";
-                SetControlsEnabled(false);
+                SetControlsVisible(false);
                 _hp = null;
             });
             Log("Headphones disconnected");
