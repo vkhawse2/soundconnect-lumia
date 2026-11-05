@@ -80,6 +80,8 @@
     <Compile Include="MainPage.xaml.cs">
       <DependentUpon>MainPage.xaml</DependentUpon>
     </Compile>
+    <Compile Include="LiveTile.cs" />
+    <Compile Include="TileRefresh.cs" />
     <Compile Include="Sony\SonyFrame.cs" />
     <Compile Include="Sony\SonySession.cs" />
     <Compile Include="Sony\SonyHeadphones.cs" />

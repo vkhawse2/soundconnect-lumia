@@ -24,6 +24,10 @@ namespace SoundConnect
         bool _connecting;           // a connect attempt (manual or auto) is in flight
         bool _autoSuppressed;       // user tapped Disconnect: no auto-reconnect until the XM4 leaves and returns
         bool _autoWaitLogged;       // "will auto-connect when it connects" already logged
+        int _tileBattery = -1;      // latest values read from the headphones, for the live tile
+        bool _tileCharging;
+        string _tileNc = "";
+        string _tileEq = "";
 
         public MainPage()
         {
@@ -48,6 +52,7 @@ namespace SoundConnect
             _autoSuppressed = false;
             await RefreshDevicesAsync();
             StartWatcher();
+            var _ = TileRefresh.RegisterAsync();
             await TryAutoConnectAsync();
         }
 
@@ -126,6 +131,7 @@ namespace SoundConnect
                 StatusText.Text = "Not connected";
                 ConnectBtn.Content = "Connect";
                 SetControlsVisible(false);
+                LiveTile.Clear();
                 Log("Disconnected");
                 return;
             }
@@ -247,6 +253,13 @@ namespace SoundConnect
             var _ = RunOnUi(() => { _autoSuppressed = false; _autoWaitLogged = false; });
         }
 
+        // Keep the Start-screen tile showing the last values read.
+        void PushTile()
+        {
+            if (_tileBattery < 0) return;
+            LiveTile.Update(_tileBattery, _tileCharging, _tileNc, _tileEq);
+        }
+
         void OnDisconnected()
         {
             var _ = RunOnUi(() =>
@@ -256,6 +269,7 @@ namespace SoundConnect
                 SetControlsVisible(false);
                 _hp = null;
             });
+            LiveTile.Clear();
             Log("Headphones disconnected");
         }
 
@@ -280,11 +294,13 @@ namespace SoundConnect
                     var b = await _hp.GetBatteryAsync();
                     BatteryText.Text = "Battery: " + b.Item1 + "%";
                     ChargingText.Text = b.Item2 ? "charging" : "";
+                    _tileBattery = b.Item1; _tileCharging = b.Item2;
                 }, "Battery read");
 
                 await Guard(async () =>
                 {
                     _nc = await _hp.GetNoiseControlAsync();
+                    _tileNc = LiveTile.DescribeNc(_nc);
                     AmbientSlider.Value = _nc.AmbientLevel >= 1 ? _nc.AmbientLevel : 10;
                     AmbientValueText.Text = _nc.Mode == NoiseMode.Ambient ? _nc.AmbientLevel.ToString() : "--";
                     FocusToggle.IsOn = _nc.FocusOnVoice;
@@ -292,7 +308,9 @@ namespace SoundConnect
 
                 await Guard(async () =>
                 {
-                    ApplyEqToUi(await _hp.GetEqualizerAsync());
+                    var eqState = await _hp.GetEqualizerAsync();
+                    _tileEq = "EQ: " + EqPresets.NameOf(eqState.Preset);
+                    ApplyEqToUi(eqState);
                 }, "Equalizer read");
 
                 await Guard(async () => { DseeToggle.IsOn = await _hp.GetDseeAsync(); }, "DSEE read");
@@ -316,6 +334,7 @@ namespace SoundConnect
                     if (!string.IsNullOrEmpty(fw)) FirmwareText.Text = "Firmware: " + fw;
                 }, "Firmware read");
 
+                PushTile();
                 Log("Settings refreshed from headphones");
             }
             finally { _loading = false; }
@@ -349,6 +368,8 @@ namespace SoundConnect
             {
                 await _hp.SetNoiseControlAsync(snapshot);
                 _nc = snapshot;
+                _tileNc = LiveTile.DescribeNc(snapshot);
+                PushTile();
                 Log("Noise control set: " + snapshot.Mode +
                     (snapshot.Mode == NoiseMode.Ambient ? " level " + snapshot.AmbientLevel : "") +
                     (snapshot.FocusOnVoice ? " + voice focus" : ""));
@@ -427,6 +448,8 @@ namespace SoundConnect
                 _loading = true;
                 try { ApplyEqToUi(eq); }
                 finally { _loading = false; }
+                _tileEq = "EQ: " + EqPresets.NameOf(eq.Preset);
+                PushTile();
             }, "EQ readback after preset");
         }
 
@@ -469,6 +492,8 @@ namespace SoundConnect
             {
                 await _hp.SetEqualizerCustomAsync(bass, bands);
                 EqPresetCombo.SelectedIndex = -1; // now Manual
+                _tileEq = "EQ: " + EqPresets.NameOf(0xA0);
+                PushTile();
                 Log("Custom EQ saved as Manual preset (Clear Bass " + bass + ")");
             }, "Custom EQ set");
         }

@@ -31,6 +31,17 @@ namespace SoundConnect
             Window.Current.Activate();
         }
 
+        // In-process background activation: the 15-minute tile-refresh task
+        // lands here (manifest EntryPoint = this App class).
+        protected override async void OnBackgroundActivated(BackgroundActivatedEventArgs args)
+        {
+            base.OnBackgroundActivated(args);
+            var deferral = args.TaskInstance.GetDeferral();
+            try { await TileRefresh.RunAsync(); }
+            catch { }
+            finally { deferral.Complete(); }
+        }
+
         void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
         {
             throw new Exception("Failed to load page " + e.SourcePageType.FullName);
