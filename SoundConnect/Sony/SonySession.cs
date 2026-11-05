@@ -19,8 +19,11 @@ namespace SoundConnect.Sony
     /// </summary>
     public sealed class SonySession
     {
-        // Sony Protocol V1 RFCOMM service (WH-1000XM4 and its generation).
-        public static readonly Guid SonyV1ServiceUuid = new Guid("96CC203E-50F8-4944-9C22-EDCB48F6216F");
+        // Sony RFCOMM control services, exactly as in our xm4mini code
+        // (vendor/Client/Constants.h): try V1 first (WH-1000XM4 generation),
+        // then fall back to V2.
+        public static readonly Guid SonyV1ServiceUuid = new Guid("96CC203E-5068-46ad-B32D-E316F5E069BA");
+        public static readonly Guid SonyV2ServiceUuid = new Guid("956C7B26-D49A-4BA8-B03F-B17D393CB6E2");
 
         StreamSocket _socket;
         DataWriter _writer;
@@ -59,17 +62,20 @@ namespace SoundConnect.Sony
             if (servicesResult.Error != BluetoothError.Success)
                 throw new InvalidOperationException("Bluetooth error while looking for the Sony service: " + servicesResult.Error);
 
+            var foundUuids = new List<string>();
             RfcommDeviceService sonyService = null;
+            RfcommDeviceService v2Service = null;
             foreach (var svc in servicesResult.Services)
             {
-                if (svc.ServiceId != null && svc.ServiceId.Uuid == SonyV1ServiceUuid)
-                {
-                    sonyService = svc;
-                    break;
-                }
+                if (svc.ServiceId == null) continue;
+                foundUuids.Add(svc.ServiceId.Uuid.ToString());
+                if (svc.ServiceId.Uuid == SonyV1ServiceUuid) sonyService = svc;
+                else if (svc.ServiceId.Uuid == SonyV2ServiceUuid) v2Service = svc;
             }
+            if (sonyService == null) sonyService = v2Service;
             if (sonyService == null)
                 throw new InvalidOperationException("Sony control service not found on this device. " +
+                    "Device offers: " + (foundUuids.Count > 0 ? string.Join(", ", foundUuids) : "(none)") + ". " +
                     "Make sure the headphones are powered on and paired, and no other app is holding the connection.");
 
             _socket = new StreamSocket();
