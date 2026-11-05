@@ -51,4 +51,5 @@ jobs:
           name: SoundConnect-W10M
           path: |
             AppPackages/**/*.appxbundle
+            AppPackages/**/*.appx
             SoundConnect.cer
