@@ -20,6 +20,10 @@ namespace SoundConnect
         readonly List<DeviceInformation> _devices = new List<DeviceInformation>();
         bool _loading;              // true while we are filling controls from the headphones
         DispatcherTimer _ambientDebounce;
+        DeviceWatcher _watcher;     // watches the XM4 come and go while the app is open
+        bool _connecting;           // a connect attempt (manual or auto) is in flight
+        bool _autoSuppressed;       // user tapped Disconnect: no auto-reconnect until the XM4 leaves and returns
+        bool _autoWaitLogged;       // "will auto-connect when it connects" already logged
 
         public MainPage()
         {
@@ -41,7 +45,16 @@ namespace SoundConnect
         protected override async void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
+            _autoSuppressed = false;
             await RefreshDevicesAsync();
+            StartWatcher();
+            await TryAutoConnectAsync();
+        }
+
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            base.OnNavigatedFrom(e);
+            StopWatcher();
         }
 
         // ---------- helpers ----------
@@ -107,6 +120,7 @@ namespace SoundConnect
         {
             if (_session.IsConnected)
             {
+                _autoSuppressed = true; // manual disconnect: don't auto-reconnect behind the user's back
                 _session.Disconnect();
                 _hp = null;
                 StatusText.Text = "Not connected";
@@ -119,11 +133,19 @@ namespace SoundConnect
             int idx = DeviceCombo.SelectedIndex;
             if (idx < 0 || idx >= _devices.Count) { Log("Pick a device first"); return; }
 
+            await ConnectToAsync(_devices[idx]);
+        }
+
+        // The one connect path, used by the Connect button and by auto-connect.
+        async Task ConnectToAsync(DeviceInformation info)
+        {
+            if (_connecting || _session.IsConnected) return;
+            _connecting = true;
             ConnectBtn.IsEnabled = false;
             StatusText.Text = "Connecting...";
             try
             {
-                var device = await BluetoothDevice.FromIdAsync(_devices[idx].Id);
+                var device = await BluetoothDevice.FromIdAsync(info.Id);
                 if (device == null) throw new InvalidOperationException("Could not open the Bluetooth device");
                 await _session.ConnectAsync(device);
                 _hp = new SonyHeadphones(_session);
@@ -141,7 +163,88 @@ namespace SoundConnect
                 _session.Disconnect();
                 _hp = null;
             }
-            finally { ConnectBtn.IsEnabled = true; }
+            finally { _connecting = false; ConnectBtn.IsEnabled = true; }
+        }
+
+        // ---------- auto-detect / auto-connect ----------
+
+        static bool IsXm4(DeviceInformation d)
+        {
+            return (d.Name ?? "").ToUpperInvariant().Contains("WH-1000XM4");
+        }
+
+        void EnsureListed(DeviceInformation info)
+        {
+            foreach (var d in _devices) if (d.Id == info.Id) return;
+            _devices.Add(info);
+            DeviceCombo.Items.Add(info.Name);
+            if (DeviceCombo.SelectedIndex < 0) DeviceCombo.SelectedIndex = 0;
+        }
+
+        // Auto-connect only when the phone itself reports the XM4 as connected
+        // (headphones on and linked). A paired-but-off XM4 is left alone - the
+        // watcher retries the moment it actually connects.
+        async Task TryAutoConnectAsync()
+        {
+            if (_session.IsConnected || _connecting || _autoSuppressed) return;
+            if (_devices.Count == 0) return;
+            var info = _devices[0];
+            BluetoothDevice device;
+            try { device = await BluetoothDevice.FromIdAsync(info.Id); }
+            catch { return; }
+            if (device == null) return;
+            if (device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+            {
+                if (!_autoWaitLogged)
+                {
+                    _autoWaitLogged = true;
+                    Log("WH-1000XM4 is paired but not connected - it will connect automatically as soon as it connects to the phone");
+                }
+                return;
+            }
+            _autoWaitLogged = false;
+            Log("WH-1000XM4 connected to the phone - connecting automatically");
+            await ConnectToAsync(info);
+        }
+
+        void StartWatcher()
+        {
+            if (_watcher != null) return;
+            _watcher = DeviceInformation.CreateWatcher(BluetoothDevice.GetDeviceSelector());
+            _watcher.Added += Watcher_Added;
+            _watcher.Updated += Watcher_Updated;
+            _watcher.Removed += Watcher_Removed;
+            try { _watcher.Start(); } catch { /* watcher is best-effort */ }
+        }
+
+        void StopWatcher()
+        {
+            if (_watcher == null) return;
+            try { _watcher.Stop(); } catch { }
+            _watcher = null;
+        }
+
+        void Watcher_Added(DeviceWatcher sender, DeviceInformation info)
+        {
+            if (!IsXm4(info)) return;
+            var _ = RunOnUi(() =>
+            {
+                EnsureListed(info);
+                var __ = TryAutoConnectAsync();
+            });
+        }
+
+        void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate update)
+        {
+            if (_devices.Count == 0 || update.Id != _devices[0].Id) return;
+            var _ = RunOnUi(() => { var __ = TryAutoConnectAsync(); });
+        }
+
+        void Watcher_Removed(DeviceWatcher sender, DeviceInformationUpdate update)
+        {
+            if (_devices.Count == 0 || update.Id != _devices[0].Id) return;
+            // The XM4 left: the next appearance is a fresh start for auto-connect.
+            var _ = RunOnUi(() => { _autoSuppressed = false; _autoWaitLogged = false; });
         }
 
         void OnDisconnected()
@@ -189,15 +292,7 @@ namespace SoundConnect
 
                 await Guard(async () =>
                 {
-                    var eq = await _hp.GetEqualizerAsync();
-                    int idx = EqPresets.IndexOf(eq.Preset);
-                    EqPresetCombo.SelectedIndex = idx; // -1 for Manual/unknown
-                    ClearBassSlider.Value = eq.ClearBass;
-                    BandSliders()[0].Value = eq.Bands[0];
-                    BandSliders()[1].Value = eq.Bands[1];
-                    BandSliders()[2].Value = eq.Bands[2];
-                    BandSliders()[3].Value = eq.Bands[3];
-                    BandSliders()[4].Value = eq.Bands[4];
+                    ApplyEqToUi(await _hp.GetEqualizerAsync());
                 }, "Equalizer read");
 
                 await Guard(async () => { DseeToggle.IsOn = await _hp.GetDseeAsync(); }, "DSEE read");
@@ -224,6 +319,16 @@ namespace SoundConnect
                 Log("Settings refreshed from headphones");
             }
             finally { _loading = false; }
+        }
+
+        // Push an EQ state read from the headphones into the controls.
+        // Callers hold _loading = true so the updates don't re-trigger sends.
+        void ApplyEqToUi(EqualizerState eq)
+        {
+            EqPresetCombo.SelectedIndex = EqPresets.IndexOf(eq.Preset); // -1 for Manual/unknown
+            ClearBassSlider.Value = eq.ClearBass;
+            var sliders = BandSliders();
+            for (int i = 0; i < 5; i++) sliders[i].Value = eq.Bands[i];
         }
 
         Slider[] BandSliders() { return new[] { Band0Slider, Band1Slider, Band2Slider, Band3Slider, Band4Slider }; }
@@ -314,7 +419,18 @@ namespace SoundConnect
                 await _hp.SetEqualizerPresetAsync(preset);
                 Log("EQ preset set: " + EqPresets.Names[idx]);
             }, "EQ preset set");
+            // Read the EQ back and move the band sliders to the preset's actual
+            // values - without this the sliders stayed wherever they were.
+            await Guard(async () =>
+            {
+                var eq = await _hp.GetEqualizerAsync();
+                _loading = true;
+                try { ApplyEqToUi(eq); }
+                finally { _loading = false; }
+            }, "EQ readback after preset");
         }
+
+        DispatcherTimer _eqDebounce;
 
         void EqSlider_ValueChanged(object sender, Windows.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
         {
@@ -322,11 +438,29 @@ namespace SoundConnect
             ClearBassValue.Text = ((int)ClearBassSlider.Value).ToString();
             var sliders = BandSliders(); var labels = BandValues();
             for (int i = 0; i < 5; i++) labels[i].Text = ((int)sliders[i].Value).ToString();
+
+            // A genuine user move (not a programmatic fill under _loading)
+            // auto-saves as the custom (Manual) preset after a short pause,
+            // so the bands never need the Apply button to take effect.
+            if (_loading || _hp == null || !_session.IsConnected) return;
+            if (_eqDebounce == null)
+            {
+                _eqDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
+                _eqDebounce.Tick += async (s, a) =>
+                {
+                    _eqDebounce.Stop();
+                    await ApplyCustomEqAsync();
+                };
+            }
+            _eqDebounce.Stop();
+            _eqDebounce.Start();
         }
 
-        async void ApplyEqBtn_Click(object sender, RoutedEventArgs e)
+        // Sending a custom EQ is what saves it: the headphones store it as
+        // their Manual preset (0xA0). The combo drops to "no preset" (Manual).
+        async Task ApplyCustomEqAsync()
         {
-            if (_hp == null) return;
+            if (_hp == null || !_session.IsConnected) return;
             var sliders = BandSliders();
             var bands = new int[5];
             for (int i = 0; i < 5; i++) bands[i] = (int)sliders[i].Value;
@@ -335,8 +469,13 @@ namespace SoundConnect
             {
                 await _hp.SetEqualizerCustomAsync(bass, bands);
                 EqPresetCombo.SelectedIndex = -1; // now Manual
-                Log("Custom EQ applied (Clear Bass " + bass + ")");
+                Log("Custom EQ saved as Manual preset (Clear Bass " + bass + ")");
             }, "Custom EQ set");
+        }
+
+        async void ApplyEqBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await ApplyCustomEqAsync();
         }
 
         // ---------- sound toggles ----------
