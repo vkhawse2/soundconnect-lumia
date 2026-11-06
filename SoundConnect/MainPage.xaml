@@ -170,17 +170,6 @@
                     </ComboBox>
                 </StackPanel>
 
-                <!-- Log (short by default; Expand/Short toggle) -->
-                <Grid Margin="0,26,0,6">
-                    <TextBlock Text="LOG" FontSize="13" Foreground="#FF5B8CFF" VerticalAlignment="Center"/>
-                    <Button x:Name="LogToggleBtn" Content="Expand" HorizontalAlignment="Right"
-                            Padding="10,3,10,3" Click="LogToggleBtn_Click"/>
-                </Grid>
-                <ScrollViewer x:Name="LogScroller" MaxHeight="110" VerticalScrollBarVisibility="Auto">
-                    <Border BorderBrush="#FF3A3A3A" BorderThickness="1" Padding="8">
-                        <TextBlock x:Name="LogText" Text="" FontSize="11" Foreground="#FFBFBFBF" TextWrapping="Wrap"/>
-                    </Border>
-                </ScrollViewer>
                 <TextBlock Text="Unofficial app for your own headphones. Built on our xm4mini protocol code (from the open SonyHeadphonesClient research). Not made by Sony."
                            FontSize="11" Foreground="#FF777777" TextWrapping="Wrap" Margin="0,14,0,0"/>
             </StackPanel>

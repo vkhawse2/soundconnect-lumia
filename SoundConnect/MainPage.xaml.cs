@@ -23,7 +23,6 @@ namespace SoundConnect
         DeviceWatcher _watcher;     // watches the XM4 come and go while the app is open
         bool _connecting;           // a connect attempt (manual or auto) is in flight
         bool _autoSuppressed;       // user tapped Disconnect: no auto-reconnect until the XM4 leaves and returns
-        bool _autoWaitLogged;       // "will auto-connect when it connects" already logged
         int _tileBattery = -1;      // latest values read from the headphones, for the live tile
         bool _tileCharging;
         string _tileNc = "";
@@ -69,19 +68,10 @@ namespace SoundConnect
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => action());
         }
 
-        void Log(string msg)
-        {
-            var _ = RunOnUi(() =>
-            {
-                var line = DateTime.Now.ToString("HH:mm:ss") + "  " + msg;
-                LogText.Text = LogText.Text.Length == 0 ? line : LogText.Text + "\n" + line;
-            });
-        }
-
         async Task Guard(Func<Task> work, string what)
         {
             try { await work(); }
-            catch (Exception ex) { Log(what + " failed: " + ex.Message); }
+            catch (Exception) { }
         }
 
         // ---------- device list / connect ----------
@@ -103,22 +93,13 @@ namespace SoundConnect
                     DeviceCombo.Items.Add(d.Name);
                 }
                 if (DeviceCombo.Items.Count > 0) DeviceCombo.SelectedIndex = 0;
-                Log(_devices.Count > 0 ? "Found WH-1000XM4" : "WH-1000XM4 not found - pair it in Settings first");
             }
-            catch (Exception ex) { Log("Device list failed: " + ex.Message); }
+            catch (Exception) { }
         }
 
         async void RefreshDevicesBtn_Click(object sender, RoutedEventArgs e)
         {
             await RefreshDevicesAsync();
-        }
-
-        bool _logExpanded;
-        void LogToggleBtn_Click(object sender, RoutedEventArgs e)
-        {
-            _logExpanded = !_logExpanded;
-            LogScroller.MaxHeight = _logExpanded ? 4000 : 110;
-            LogToggleBtn.Content = _logExpanded ? "Short" : "Expand";
         }
 
         async void ConnectBtn_Click(object sender, RoutedEventArgs e)
@@ -132,12 +113,11 @@ namespace SoundConnect
                 ConnectBtn.Content = "Connect";
                 SetControlsVisible(false);
                 LiveTile.Clear();
-                Log("Disconnected");
                 return;
             }
 
             int idx = DeviceCombo.SelectedIndex;
-            if (idx < 0 || idx >= _devices.Count) { Log("Pick a device first"); return; }
+            if (idx < 0 || idx >= _devices.Count) { return; }
 
             await ConnectToAsync(_devices[idx]);
         }
@@ -158,14 +138,12 @@ namespace SoundConnect
                 StatusText.Text = "Connected to " + device.Name;
                 ConnectBtn.Content = "Disconnect";
                 SetControlsVisible(true);
-                Log("Connected to " + device.Name);
                 await _hp.InitDeviceAsync();
                 await RefreshAllAsync();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 StatusText.Text = "Connection failed";
-                Log("Connect failed: " + ex.Message);
                 _session.Disconnect();
                 _hp = null;
             }
@@ -201,15 +179,8 @@ namespace SoundConnect
             if (device == null) return;
             if (device.ConnectionStatus != BluetoothConnectionStatus.Connected)
             {
-                if (!_autoWaitLogged)
-                {
-                    _autoWaitLogged = true;
-                    Log("WH-1000XM4 is paired but not connected - it will connect automatically as soon as it connects to the phone");
-                }
                 return;
             }
-            _autoWaitLogged = false;
-            Log("WH-1000XM4 connected to the phone - connecting automatically");
             await ConnectToAsync(info);
         }
 
@@ -250,7 +221,7 @@ namespace SoundConnect
         {
             if (_devices.Count == 0 || update.Id != _devices[0].Id) return;
             // The XM4 left: the next appearance is a fresh start for auto-connect.
-            var _ = RunOnUi(() => { _autoSuppressed = false; _autoWaitLogged = false; });
+            var _ = RunOnUi(() => { _autoSuppressed = false; });
         }
 
         // Keep the Start-screen tile showing the last values read.
@@ -270,13 +241,11 @@ namespace SoundConnect
                 _hp = null;
             });
             LiveTile.Clear();
-            Log("Headphones disconnected");
         }
 
         void OnNotification(byte[] payload)
         {
-            if (payload == null || payload.Length == 0) return;
-            Log("Headphones update: " + BitConverter.ToString(payload).Replace("-", " "));
+            // Protocol notifications are not recorded anywhere.
         }
 
         // ---------- refresh ----------
@@ -335,7 +304,6 @@ namespace SoundConnect
                 }, "Firmware read");
 
                 PushTile();
-                Log("Settings refreshed from headphones");
             }
             finally { _loading = false; }
         }
@@ -370,9 +338,6 @@ namespace SoundConnect
                 _nc = snapshot;
                 _tileNc = LiveTile.DescribeNc(snapshot);
                 PushTile();
-                Log("Noise control set: " + snapshot.Mode +
-                    (snapshot.Mode == NoiseMode.Ambient ? " level " + snapshot.AmbientLevel : "") +
-                    (snapshot.FocusOnVoice ? " + voice focus" : ""));
             }, "Noise control set");
         }
 
@@ -438,7 +403,6 @@ namespace SoundConnect
             await Guard(async () =>
             {
                 await _hp.SetEqualizerPresetAsync(preset);
-                Log("EQ preset set: " + EqPresets.Names[idx]);
             }, "EQ preset set");
             // Read the EQ back and move the band sliders to the preset's actual
             // values - without this the sliders stayed wherever they were.
@@ -494,7 +458,6 @@ namespace SoundConnect
                 EqPresetCombo.SelectedIndex = -1; // now Manual
                 _tileEq = "EQ: " + EqPresets.NameOf(0xA0);
                 PushTile();
-                Log("Custom EQ saved as Manual preset (Clear Bass " + bass + ")");
             }, "Custom EQ set");
         }
 
@@ -509,14 +472,14 @@ namespace SoundConnect
         {
             if (_loading || _hp == null) return;
             bool on = DseeToggle.IsOn;
-            await Guard(async () => { await _hp.SetDseeAsync(on); Log("DSEE " + (on ? "on" : "off")); }, "DSEE set");
+            await Guard(async () => { await _hp.SetDseeAsync(on); }, "DSEE set");
         }
 
         async void SpeakToggle_Toggled(object sender, RoutedEventArgs e)
         {
             if (_loading || _hp == null) return;
             bool on = SpeakToggle.IsOn;
-            await Guard(async () => { await _hp.SetSpeakToChatAsync(on); Log("Speak-to-Chat " + (on ? "on" : "off")); }, "Speak-to-Chat set");
+            await Guard(async () => { await _hp.SetSpeakToChatAsync(on); }, "Speak-to-Chat set");
         }
 
         // ---------- power ----------
@@ -528,7 +491,6 @@ namespace SoundConnect
             await Guard(async () =>
             {
                 await _hp.SetAutoPowerOffAsync(index);
-                Log("Auto power off: " + (index == 5 ? "when taken off" : "do not turn off"));
             }, "Auto power off set");
         }
 
@@ -546,7 +508,6 @@ namespace SoundConnect
             await Guard(async () =>
             {
                 await _hp.PowerOffAsync();
-                Log("Power off sent");
             }, "Power off");
         }
     }
